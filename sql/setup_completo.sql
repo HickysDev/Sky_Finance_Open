@@ -5,6 +5,8 @@
 --  Estrutura sincronizada com o banco em produção.
 -- ============================================================
 
+SET NAMES utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS `projeto`
   DEFAULT CHARACTER SET utf8mb4
   COLLATE utf8mb4_general_ci;
@@ -363,3 +365,20 @@ ALTER TABLE `cofrinho_aportes` ADD COLUMN IF NOT EXISTS `saldo_inicial` CHAR(1) 
 
 -- Tema visual por usuário
 ALTER TABLE `usuarios` ADD COLUMN IF NOT EXISTS `tema` VARCHAR(20) NULL DEFAULT NULL;
+
+-- ------------------------------------------------------------
+-- Contas fixas com frequência: a cada N meses (1 = todo mês, 2 = mês sim
+-- mês não) a partir de `frequencia_inicio` (1º dia do mês de referência).
+-- ------------------------------------------------------------
+ALTER TABLE `contas_fixas`
+  ADD COLUMN IF NOT EXISTS `frequencia_meses` TINYINT NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS `frequencia_inicio` DATE NULL DEFAULT NULL;
+
+-- ------------------------------------------------------------
+-- Conta fixa paga no crédito: cartão + quantos meses ela "anda" até a fatura
+-- (0 = cai no mesmo mês; 1 = fatura do mês seguinte). Calculado ao salvar
+-- pelo dia de vencimento x dia de fechamento do cartão.
+-- ------------------------------------------------------------
+ALTER TABLE `contas_fixas`
+  ADD COLUMN IF NOT EXISTS `cartao_id` INT NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `meses_desloc` TINYINT NOT NULL DEFAULT 0;

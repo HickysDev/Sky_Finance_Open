@@ -68,10 +68,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $bloqueado = false;
 
         try {
-            $s = $conn->prepare("SELECT bloqueado_ate FROM login_tentativas WHERE ip = ?");
+            // Comparado no próprio MySQL: o fuso do PHP e o do banco podem diferir na hospedagem
+            $s = $conn->prepare("SELECT bloqueado_ate > NOW() AS bloqueado FROM login_tentativas WHERE ip = ?");
             $s->execute([$ip]);
             $reg = $s->fetch(PDO::FETCH_ASSOC);
-            if ($reg && $reg['bloqueado_ate'] && new DateTime() < new DateTime($reg['bloqueado_ate'])) {
+            if ($reg && !empty($reg['bloqueado'])) {
                 $bloqueado = true;
                 $erro = 'Muitas tentativas incorretas. Aguarde 15 minutos.';
             }

@@ -524,6 +524,34 @@ $tipoDespesa = 'recorrente';
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label" for="cfPagamento">Como paga</label>
+                    <select class="form-select" id="cfPagamento">
+                        <option value="">À vista (Pix, débito, boleto, dinheiro)</option>
+                    </select>
+                    <small style="color:var(--cor-texto-off);font-size:0.75rem;" id="cfPagDica"></small>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label class="form-label" for="cfFrequencia">Frequência</label>
+                        <select class="form-select" id="cfFrequencia">
+                            <option value="1">Todo mês</option>
+                            <option value="2">Mês sim, mês não</option>
+                            <option value="3">A cada 3 meses</option>
+                            <option value="6">A cada 6 meses</option>
+                            <option value="12">Uma vez por ano</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6" id="cfFreqIniWrap" style="display:none;">
+                        <label class="form-label" for="cfFreqIni">Cai em</label>
+                        <input type="month" class="form-control" id="cfFreqIni">
+                    </div>
+                    <div class="col-12" id="cfFreqDica" style="display:none;">
+                        <small style="color:var(--cor-texto-off);font-size:0.75rem;" id="cfFreqTexto"></small>
+                    </div>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">Quem paga</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-person-fill"></i></span>
@@ -1259,6 +1287,47 @@ function buscaResponsaveis() {
     window.montaSeletorCor('#cfCorSwatches', '#cfCor');
     var bancCfValor = bancInput(document.getElementById('cfValor'));
 
+    // Frequência: mostra o mês de referência e uma prévia dos próximos meses
+    var MESES_CF = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    function mesAtualCF() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+    function previaFreqCF() {
+        var n = parseInt($('#cfFrequencia').val(), 10) || 1;
+        $('#cfFreqIniWrap, #cfFreqDica').toggle(n > 1);
+        if (n <= 1) return;
+        var ini = ($('#cfFreqIni').val() || mesAtualCF()).split('-');
+        var a = +ini[0], m = +ini[1] - 1, lista = [];
+        for (var i = 0; i < 4; i++) { lista.push(MESES_CF[m] + '/' + String(a).slice(2)); m += n; a += Math.floor(m / 12); m %= 12; }
+        $('#cfFreqTexto').text('Entra nos meses: ' + lista.join(', ') + '… Nos outros meses ela não aparece nem soma.');
+    }
+    window.setFreqCF = function (n, ini) {
+        $('#cfFrequencia').val(String(n || 1));
+        $('#cfFreqIni').val(ini ? String(ini).slice(0, 7) : mesAtualCF());
+        previaFreqCF();
+    };
+    $('#cfFrequencia, #cfFreqIni').on('change input', previaFreqCF);
+
+    // Como paga: à vista ou um dos cartões (no crédito pode cair na fatura seguinte)
+    var _cartoesCF = {};
+    function dicaPagCF() {
+        var c = _cartoesCF[$('#cfPagamento').val()], dia = parseInt($('#cfDia').val(), 10);
+        if (!c) { $('#cfPagDica').text('Conta no mês do vencimento.'); return; }
+        var proximo = dia && dia >= parseInt(c.fechamento_dia, 10);
+        $('#cfPagDica').text('O cartão fecha dia ' + c.fechamento_dia + '. ' + (dia
+            ? (proximo ? 'Vencendo dia ' + dia + ', a cobrança cai na fatura do mês seguinte.'
+                       : 'Vencendo dia ' + dia + ', a cobrança cai na fatura do mesmo mês.')
+            : 'Informe o dia de vencimento para ver em qual fatura cai.'));
+    }
+    window.setPagCF = function (cartaoId) {
+        $.ajax({ type: 'POST', url: App.ctrl.cartoes, data: { acao: 'busca' }, dataType: 'json', success: function (d) {
+            _cartoesCF = {};
+            var html = '<option value="">À vista (Pix, débito, boleto, dinheiro)</option>';
+            $.each(d || {}, function (_, c) { _cartoesCF[c.id] = c; html += '<option value="' + c.id + '">Crédito · ' + escHtml(c.nome_cartao) + '</option>'; });
+            $('#cfPagamento').html(html).val(cartaoId ? String(cartaoId) : '');
+            dicaPagCF();
+        }});
+    };
+    $('#cfPagamento, #cfDia').on('change input', dicaPagCF);
+
     // Pessoas para o "Quem paga" (recarrega ao abrir o modal)
     function carregaCfResponsaveis(selecionado) {
         $.ajax({
@@ -1278,6 +1347,8 @@ function buscaResponsaveis() {
         $('#cfNome').val('');
         bancCfValor.setValue(0);
         $('#cfDia').val('');
+        setFreqCF(1, null);
+        setPagCF(null);
         $('#cfCorSwatches').data('setCor')('#3B82F6');
         carregaCfResponsaveis(null);
         $('#modalCFTitulo').text('Nova Conta Fixa');
@@ -1293,6 +1364,8 @@ function buscaResponsaveis() {
         $('#cfNome').val(cf.nome);
         bancCfValor.setValue(cf.valor);
         $('#cfDia').val(cf.dia_vencimento);
+        setFreqCF(parseInt(cf.frequencia_meses, 10) || 1, cf.frequencia_inicio);
+        setPagCF(cf.cartao_id);
         $('#cfCorSwatches').data('setCor')(cor);
         carregaCfResponsaveis(cf.responsavel_id);
         $('#modalCFTitulo').text(cf.nome);
@@ -1309,7 +1382,9 @@ function buscaResponsaveis() {
         $.ajax({
             type: 'POST', url: App.ctrl.contasFixas,
             data: { acao: id > 0 ? 'editar' : 'adicionar', id: id, nome: nome, valor: valor, dia_vencimento: dia, cor: cor,
-                    responsavel: $('#cfResponsavel').val() || '' },
+                    responsavel: $('#cfResponsavel').val() || '',
+                    frequencia_meses: $('#cfFrequencia').val(), frequencia_inicio: $('#cfFreqIni').val() || '',
+                    cartao_id: $('#cfPagamento').val() || '' },
             dataType: 'json',
             success: function (ok) {
                 if (ok) {
@@ -1386,6 +1461,9 @@ function buscaContasFixas() {
                             '<div>' +
                                 '<div class="cfi-nome">' + escHtml(cf.nome) + '</div>' +
                                 '<div class="cfi-detalhe"><i class="bi bi-calendar3 me-1"></i>Vence dia ' + cf.dia_vencimento +
+                                    (cf.nome_cartao ? ' · <i class="bi bi-credit-card me-1"></i>' + escHtml(cf.nome_cartao) : '') +
+                                    (parseInt(cf.frequencia_meses, 10) > 1 ? ' · <i class="bi bi-arrow-repeat me-1"></i>' +
+                                        ({2: 'mês sim, mês não', 3: 'a cada 3 meses', 6: 'a cada 6 meses', 12: 'uma vez por ano'}[cf.frequencia_meses] || 'a cada ' + cf.frequencia_meses + ' meses') : '') +
                                     (cf.responsavel_nome ? ' · <i class="bi bi-person-fill me-1"></i>' + escHtml(cf.responsavel_nome) + ' paga' : '') + '</div>' +
                             '</div>' +
                         '</div>' +

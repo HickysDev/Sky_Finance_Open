@@ -31,6 +31,22 @@ $parte = isset($_POST['responsavel_parte']) && $_POST['responsavel_parte'] !== '
 if ($parte !== null && ($parte <= 0 || $parte >= 100)) $parte = null;
 if ($parte !== null) $parte = round($parte, 4);
 
+// Categoria, cartão e pessoa informados precisam ser do próprio usuário
+// (senão uma despesa ficaria ligada a registros de outra conta).
+if (in_array($acao, ['adicionar', 'editar', 'editarSimples', 'editarRecorrenteSimples', 'editaGasto'], true)) {
+    $connRef = Database::getConnection();
+    foreach ([['categorias', $categoria], ['cartoes_credito', $cartao], ['responsaveis', $responsavel]] as [$tabRef, $ref]) {
+        if ($ref === null || $ref === '' || $ref === '0' || $ref === false) continue;
+        $qRef = $connRef->prepare("SELECT COUNT(*) FROM `$tabRef` WHERE id = ? AND usuario_id = @uid");
+        $qRef->execute([(int) $ref]);
+        if (!(int) $qRef->fetchColumn()) {
+            http_response_code(400);
+            echo json_encode(['erro' => 'Categoria, cartão ou pessoa inválidos.']);
+            exit;
+        }
+    }
+}
+
 $retorno = null;
 
 switch ($acao) {
@@ -38,6 +54,21 @@ switch ($acao) {
         $valor = str_replace(['R$', ' ', '.'], '', $valor);
         $valor = str_replace(',', '.', $valor);
         $valor = (float) $valor;
+
+        // A coluna é DECIMAL(10,2): valor <= 0 ou acima disso não é lançamento válido
+        if ($valor <= 0 || $valor > 99999999.99) {
+            http_response_code(400);
+            echo json_encode(['erro' => 'Valor inválido.']);
+            exit;
+        }
+        if ($data !== null && $data !== '') {
+            $dt = DateTime::createFromFormat('Y-m-d', substr($data, 0, 10));
+            if (!$dt || $dt->format('Y-m-d') !== substr($data, 0, 10)) {
+                http_response_code(400);
+                echo json_encode(['erro' => 'Data inválida.']);
+                exit;
+            }
+        }
 
         if ($tipo === 'debito' || $tipo === 'recorrente') {
             $parcelado    = "N";

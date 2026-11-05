@@ -765,6 +765,9 @@ $mesAtual = date('n');
                             if (gasto.tipo === 'NORMAL') {
                                 dataExib    = moment(gasto.data_gasto).format('DD/MM/YYYY');
                                 infoParcela = (gasto.numero_parcela ?? 1) + '/' + (gasto.parcelas_total ?? 1);
+                            } else if (gasto.tipo === 'CONTA_FIXA') {
+                                dataExib    = '<span title="Conta fixa (vence dia ' + gasto.dia_vencimento + ')"><i class="bi bi-receipt-cutoff"></i></span>';
+                                infoParcela = '<span class="badge-conta-fixa">Conta fixa</span>';
                             } else {
                                 dataExib    = '<i class="bi bi-arrow-clockwise" title="Recorrente"></i>';
                                 infoParcela = '<i class="bi bi-arrow-clockwise" title="Recorrente"></i>';
@@ -815,11 +818,11 @@ $mesAtual = date('n');
                                 <td>
                                     <div class="d-flex align-items-center gap-1 justify-content-end">
                                         ${btnEditar}
-                                        <button class="btn btn-sm btn-outline-danger btn-remover-gasto py-0 px-1"
+                                        ${gasto.tipo === 'CONTA_FIXA' ? '<a class="btn btn-sm btn-outline-secondary py-0 px-1" href="contas_fixas.php" title="Gerenciar em Contas Fixas"><i class="bi bi-box-arrow-up-right" style="font-size:.75rem;"></i></a>' : `<button class="btn btn-sm btn-outline-danger btn-remover-gasto py-0 px-1"
                                             data-id="${gasto.id}" data-parcelado="${gasto.parcelado}" data-tipo="${gasto.tipo}"
                                             title="Remover">
                                             <i class="bi bi-trash-fill" style="font-size:.75rem;"></i>
-                                        </button>
+                                        </button>`}
                                     </div>
                                 </td>
                             </tr>`;

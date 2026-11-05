@@ -182,6 +182,37 @@ class CofrinhoModel {
         }
     }
 
+    /**
+     * Apaga um lançamento do histórico (depósito ou retirada) e desfaz o efeito
+     * no saldo do cofrinho. Some também do "guardado no mês".
+     */
+    public static function excluirAporte(int $aporteId): array {
+        $conn = Database::getConnection();
+        $s = $conn->prepare("
+            SELECT a.id, a.cofrinho_id, a.valor, c.valor_atual
+            FROM cofrinho_aportes a JOIN cofrinhos c ON c.id = a.cofrinho_id
+            WHERE a.id = ? AND c.usuario_id = @uid
+        ");
+        $s->execute([$aporteId]);
+        $a = $s->fetch(PDO::FETCH_ASSOC);
+        if (!$a) return ['ok' => false, 'erro' => 'Lançamento não encontrado.'];
+        // Apagar um depósito não pode deixar o saldo negativo
+        if ((float) $a['valor_atual'] - (float) $a['valor'] < -0.004) {
+            return ['ok' => false, 'erro' => 'O saldo ficaria negativo. Apague antes a retirada que usou esse dinheiro.'];
+        }
+        $conn->beginTransaction();
+        try {
+            $conn->prepare("DELETE FROM cofrinho_aportes WHERE id = ?")->execute([$aporteId]);
+            $conn->prepare("UPDATE cofrinhos SET valor_atual = valor_atual - ? WHERE id = ? AND usuario_id = @uid")
+                 ->execute([(float) $a['valor'], (int) $a['cofrinho_id']]);
+            $conn->commit();
+            return ['ok' => true];
+        } catch (Exception $e) {
+            $conn->rollBack();
+            return ['ok' => false, 'erro' => 'Não foi possível apagar.'];
+        }
+    }
+
     public static function buscarAportes(int $id): array {
         $conn = Database::getConnection();
         $stmt = $conn->prepare("

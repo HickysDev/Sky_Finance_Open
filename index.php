@@ -829,10 +829,11 @@ $(document).ready(function () {
             var rows = '';
             $.each(items, function (i, gasto) {
                 if (i === 'valortotal') return;
-                var dataExib    = gasto.tipo === 'NORMAL' ? moment(gasto.data_gasto).format('DD/MM') : '<i class="bi bi-arrow-clockwise"></i>';
+                var dataExib    = gasto.tipo === 'NORMAL' ? moment(gasto.data_gasto).format('DD/MM')
+                                : (gasto.tipo === 'CONTA_FIXA' ? '<i class="bi bi-receipt-cutoff"></i>' : '<i class="bi bi-arrow-clockwise"></i>');
                 var infoParcela = gasto.tipo === 'NORMAL'
                     ? ((gasto.numero_parcela || 1) + '/' + (gasto.parcelas_total || 1))
-                    : '<i class="bi bi-arrow-clockwise"></i>';
+                    : (gasto.tipo === 'CONTA_FIXA' ? '<span class="badge-conta-fixa">Conta fixa</span>' : '<i class="bi bi-arrow-clockwise"></i>');
                 rows +=
                     '<tr>' +
                         '<td>' + escHtml(gasto.descricao) + '</td>' +
@@ -962,7 +963,14 @@ $(document).ready(function () {
         items.forEach(function (cf) {
             var pago = cf.pago;
             var acoes;
-            if (cf.pulado) {
+            if (cf.no_credito && !cf.pulado) {
+                // No cartão: o estado vem da fatura (paga lá, em "Faturas do mês")
+                acoes = (pago ? '' :
+                        '<button class="ar-btn ar-btn-pular" data-id="' + cf.id + '" data-mes="' + mes + '" data-ano="' + ano + '" title="Não vou pagar este mês">' +
+                            '<i class="bi bi-skip-forward me-1"></i>Pular</button>') +
+                    '<span class="ar-btn ' + (pago ? 'ar-btn-pago' : 'ar-btn-fatura') + '" title="Paga junto com a fatura do ' + escHtml(cf.nome_cartao || 'cartão') + '">' +
+                        (pago ? '<i class="bi bi-credit-card-2-back-fill me-1"></i>Fatura paga' : '<i class="bi bi-credit-card-2-back me-1"></i>Na fatura') + '</span>';
+            } else if (cf.pulado) {
                 acoes = '<button class="ar-btn ar-btn-pulado ar-desfaz-pulo" data-id="' + cf.id + '" data-mes="' + mes + '" data-ano="' + ano + '" title="Desfazer — voltar a pagar este mês">' +
                             '<i class="bi bi-skip-forward-fill me-1"></i>Pulado</button>';
             } else {
@@ -1031,7 +1039,7 @@ $(document).ready(function () {
 
         // ── Contas Fixas ──
         (cfItems || []).forEach(function (cf) {
-            if (cf.pago || cf.pulado) return;
+            if (cf.pago || cf.pulado || cf.no_credito) return;
             var dias = parseInt(cf.dia_vencimento) - diaHoje;
             if (dias < 0) {
                 avisos.push({ nivel: 'danger', icon: 'bi-exclamation-triangle-fill',

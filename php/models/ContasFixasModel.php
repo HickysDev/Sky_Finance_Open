@@ -13,13 +13,26 @@ class ContasFixasModel {
      * o histórico ao ser inativada.
      * $alias é o alias de contas_fixas na query; mês/ano viram literais seguros.
      */
+    /**
+     * Frequência: a conta só cai a cada `frequencia_meses` meses, contando do
+     * mês de `frequencia_inicio` (ou da criação). 1 = todo mês.
+     */
+    public static function sqlCaiNoMes(string $alias, int $mes, int $ano): string {
+        $alvo = sprintf('%04d-%02d-01', $ano, $mes);
+        $ym = "DATE_FORMAT(DATE_SUB('{$alvo}', INTERVAL {$alias}.meses_desloc MONTH), '%Y%m')";
+        return "({$alias}.frequencia_meses <= 1 OR MOD(PERIOD_DIFF({$ym},
+                   DATE_FORMAT(COALESCE({$alias}.frequencia_inicio, {$alias}.created_at), '%Y%m')),
+                   {$alias}.frequencia_meses) = 0)";
+    }
+
     public static function sqlValeNoMes(string $alias, int $mes, int $ano): string {
         $alvo = sprintf('%04d-%02d-01', $ano, $mes);
         $mes  = (int) $mes;
         $ano  = (int) $ano;
         return "(
-            (DATE_FORMAT({$alias}.created_at, '%Y-%m-01') <= '{$alvo}'
-             AND ({$alias}.ativo = 'S' OR {$alias}.inativado_em > '{$alvo}'))
+            (DATE_FORMAT({$alias}.created_at, '%Y-%m-01') <= DATE_SUB('{$alvo}', INTERVAL {$alias}.meses_desloc MONTH)
+             AND ({$alias}.ativo = 'S' OR {$alias}.inativado_em > DATE_SUB('{$alvo}', INTERVAL {$alias}.meses_desloc MONTH))
+             AND " . self::sqlCaiNoMes($alias, $mes, $ano) . ")
             OR EXISTS (SELECT 1 FROM contas_fixas_pagamentos cfp_v
                        WHERE cfp_v.conta_fixa_id = {$alias}.id AND cfp_v.mes = {$mes} AND cfp_v.ano = {$ano})
         )";
@@ -51,9 +64,10 @@ class ContasFixasModel {
     public static function listar(): array {
         $conn = Database::getConnection();
         $stmt = $conn->prepare("
-            SELECT cf.*, r.nome AS responsavel_nome
+            SELECT cf.*, r.nome AS responsavel_nome, cc.nome_cartao
             FROM contas_fixas cf
             LEFT JOIN responsaveis r ON r.id = cf.responsavel_id
+            LEFT JOIN cartoes_credito cc ON cc.id = cf.cartao_id
             WHERE cf.usuario_id = @uid AND cf.arquivado_em IS NULL ORDER BY cf.nome ASC
         ");
         $stmt->execute();
@@ -66,22 +80,38 @@ class ContasFixasModel {
 
     // $resp = quem paga por padrão (NULL = eu). Só vale para meses ainda não pagos:
     // cada pagamento grava o responsável daquele mês.
-    public static function adicionar(string $nome, float $valor, int $dia, string $cor, ?int $resp = null): bool {
+    public static function adicionar(string $nome, float $valor, int $dia, string $cor, ?int $resp = null, int $freq = 1, ?string $freqIni = null, ?int $cartao = null): bool {
         $conn = Database::getConnection();
+        [$cartao, $desloc] = self::cartaoEDesloc($cartao, $dia);
         $stmt = $conn->prepare("
-            INSERT INTO contas_fixas (usuario_id, nome, valor, dia_vencimento, cor, responsavel_id)
-            VALUES (@uid, :nome, :valor, :dia, :cor, :resp)
+            INSERT INTO contas_fixas (usuario_id, nome, valor, dia_vencimento, cor, responsavel_id, frequencia_meses, frequencia_inicio, cartao_id, meses_desloc)
+            VALUES (@uid, :nome, :valor, :dia, :cor, :resp, :freq, :fini, :cartao, :desloc)
         ");
-        return $stmt->execute([':nome' => trim($nome), ':valor' => $valor, ':dia' => $dia, ':cor' => $cor, ':resp' => $resp]);
+        return $stmt->execute([':nome' => trim($nome), ':valor' => $valor, ':dia' => $dia, ':cor' => $cor, ':resp' => $resp,
+                               ':freq' => $freq, ':fini' => $freq > 1 ? $freqIni : null, ':cartao' => $cartao, ':desloc' => $desloc]);
     }
 
-    public static function editar(int $id, string $nome, float $valor, int $dia, string $cor, ?int $resp = null): bool {
+    public static function editar(int $id, string $nome, float $valor, int $dia, string $cor, ?int $resp = null, int $freq = 1, ?string $freqIni = null, ?int $cartao = null): bool {
         $conn = Database::getConnection();
+        [$cartao, $desloc] = self::cartaoEDesloc($cartao, $dia);
         $stmt = $conn->prepare("
-            UPDATE contas_fixas SET nome = :nome, valor = :valor, dia_vencimento = :dia, cor = :cor, responsavel_id = :resp
+            UPDATE contas_fixas SET nome = :nome, valor = :valor, dia_vencimento = :dia, cor = :cor, responsavel_id = :resp,
+                   frequencia_meses = :freq, frequencia_inicio = :fini, cartao_id = :cartao, meses_desloc = :desloc
             WHERE id = :id AND usuario_id = @uid
         ");
-        return $stmt->execute([':nome' => trim($nome), ':valor' => $valor, ':dia' => $dia, ':cor' => $cor, ':resp' => $resp, ':id' => $id]);
+        return $stmt->execute([':nome' => trim($nome), ':valor' => $valor, ':dia' => $dia, ':cor' => $cor, ':resp' => $resp,
+                               ':freq' => $freq, ':fini' => $freq > 1 ? $freqIni : null, ':cartao' => $cartao, ':desloc' => $desloc, ':id' => $id]);
+    }
+
+    /** Cartão do usuário + deslocamento: vencimento no dia do fechamento ou depois → fatura seguinte. */
+    private static function cartaoEDesloc(?int $cartao, int $dia): array {
+        if (!$cartao) return [null, 0];
+        $conn = Database::getConnection();
+        $s = $conn->prepare("SELECT fechamento_dia FROM cartoes_credito WHERE id = ? AND usuario_id = @uid");
+        $s->execute([$cartao]);
+        $f = $s->fetchColumn();
+        if ($f === false) return [null, 0];
+        return [$cartao, $dia >= (int) $f ? 1 : 0];
     }
 
     /** Quem paga por padrão (NULL = eu). */
@@ -159,21 +189,27 @@ class ContasFixasModel {
                    cf.responsavel_id AS responsavel_padrao,
                    -- pago: para quem foi o dinheiro naquele mês; em aberto: o padrão
                    IF(cfp.id IS NULL, cf.responsavel_id, cfp.responsavel_id) AS responsavel_id,
-                   r.nome AS responsavel_nome
+                   r.nome AS responsavel_nome, cf.cartao_id, cf.meses_desloc, cc.nome_cartao,
+                   (SELECT fp.data_pagamento FROM faturas_pagas fp WHERE fp.cartao_id = cf.cartao_id
+                      AND fp.usuario_id = @uid AND fp.mes = :mes2 AND fp.ano = :ano2 LIMIT 1) AS fatura_paga_em
             FROM contas_fixas cf
+            LEFT JOIN cartoes_credito cc ON cc.id = cf.cartao_id
             LEFT JOIN contas_fixas_pagamentos cfp
                 ON cfp.conta_fixa_id = cf.id AND cfp.mes = :mes AND cfp.ano = :ano AND cfp.usuario_id = @uid
             LEFT JOIN responsaveis r ON r.id = IF(cfp.id IS NULL, cf.responsavel_id, cfp.responsavel_id)
             WHERE cf.usuario_id = @uid AND " . self::sqlValeNoMes('cf', $mes, $ano) . "
             ORDER BY cf.nome ASC
         ");
-        $stmt->execute([':mes' => $mes, ':ano' => $ano]);
+        $stmt->execute([':mes' => $mes, ':ano' => $ano, ':mes2' => $mes, ':ano2' => $ano]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['valor']      = (float) $r['valor'];
             $r['valor_pago'] = $r['valor_pago'] !== null ? (float) $r['valor_pago'] : null;
             $r['pulado']     = $r['pulado'] === 'S';
-            $r['pago']       = $r['pagamento_id'] !== null && !$r['pulado'];
+            // No crédito não há botão de pagar: fica paga quando a fatura do cartão é paga
+            $r['no_credito'] = !empty($r['cartao_id']);
+            $r['pago']       = !$r['pulado'] && ($r['pagamento_id'] !== null || ($r['no_credito'] && !empty($r['fatura_paga_em'])));
+            if ($r['no_credito'] && $r['pagamento_id'] === null && !empty($r['fatura_paga_em'])) $r['data_pagamento'] = $r['fatura_paga_em'];
         }
         return $rows;
     }
@@ -183,7 +219,8 @@ class ContasFixasModel {
         $conn = Database::getConnection();
         $stmt = $conn->prepare("
             INSERT INTO contas_fixas_pagamentos (conta_fixa_id, usuario_id, mes, ano, data_pagamento, valor_pago, responsavel_id)
-            VALUES (:cid, @uid, :mes, :ano, :data, :valor, :resp)
+            SELECT cf.id, @uid, :mes, :ano, :data, :valor, :resp
+            FROM contas_fixas cf WHERE cf.id = :cid AND cf.usuario_id = @uid
             ON DUPLICATE KEY UPDATE data_pagamento = :data2, valor_pago = :valor2, pulado = 'N', responsavel_id = :resp2
         ");
         return $stmt->execute([
@@ -225,7 +262,8 @@ class ContasFixasModel {
             FROM contas_fixas cf
             LEFT JOIN contas_fixas_pagamentos cfp
                 ON cfp.conta_fixa_id = cf.id AND cfp.mes = :mes AND cfp.ano = :ano AND cfp.usuario_id = @uid
-            WHERE cf.usuario_id = @uid AND cf.ativo = 'S' AND cfp.id IS NULL
+            WHERE cf.usuario_id = @uid AND cf.ativo = 'S' AND cfp.id IS NULL AND cf.cartao_id IS NULL
+              AND " . self::sqlCaiNoMes('cf', $mes, $ano) . "
             ORDER BY cf.dia_vencimento ASC
         ");
         $stmt->execute([':mes' => $mes, ':ano' => $ano]);

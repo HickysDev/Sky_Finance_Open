@@ -31,6 +31,12 @@ if (!empty($_POST['valor_pago'])) {
 $temResp = array_key_exists('responsavel', $_POST);
 $resp    = $temResp && $_POST['responsavel'] !== '' ? (int) $_POST['responsavel'] : null;
 
+// Frequência: 1 (todo mês) a 12; mês de referência 'YYYY-MM' (padrão: mês atual)
+$freq = max(1, min(12, (int) ($_POST['frequencia_meses'] ?? 1)));
+$freqIni = preg_match('/^\d{4}-\d{2}$/', $_POST['frequencia_inicio'] ?? '') ? $_POST['frequencia_inicio'] . '-01' : date('Y-m-01');
+
+$cartaoCF = (int) ($_POST['cartao_id'] ?? 0) ?: null;   // vazio = à vista
+
 $retorno = null;
 
 switch ($acao) {
@@ -43,14 +49,14 @@ switch ($acao) {
         if (!$nome || $valor <= 0 || $dia < 1 || $dia > 31) {
             http_response_code(400); echo json_encode(['erro' => 'Dados inválidos']); exit;
         }
-        $retorno = ContasFixasModel::adicionar($nome, $valor, $dia, $cor, $resp);
+        $retorno = ContasFixasModel::adicionar($nome, $valor, $dia, $cor, $resp, $freq, $freqIni, $cartaoCF);
         break;
 
     case 'editar':
         if (!$id || !$nome) {
             http_response_code(400); echo json_encode(['erro' => 'Dados inválidos']); exit;
         }
-        $retorno = ContasFixasModel::editar($id, $nome, $valor, $dia, $cor, $resp);
+        $retorno = ContasFixasModel::editar($id, $nome, $valor, $dia, $cor, $resp, $freq, $freqIni, $cartaoCF);
         break;
 
     case 'toggleAtivo':

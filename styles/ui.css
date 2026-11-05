@@ -776,3 +776,11 @@ html .btn.btn-acao-icone.btn-outline-danger:hover {
 html .btn.btn-acao-icone.btn-outline-success:hover {
   color: var(--texto-verde, #4ADE80) !important; border-color: #22C55E !important; background: rgba(34,197,94,.12) !important; }
 html.light-mode .btn.btn-acao-icone:hover { background: #F1F5F9 !important; }
+
+/* Conta fixa no crédito: estado "na fatura" (não é botão) */
+html .ar-btn-fatura { background: rgba(59,130,246,.12); color: var(--texto-azul, #60A5FA); cursor: default; }
+html.light-mode .ar-btn-fatura { color: #1D4ED8; }
+
+html .badge-conta-fixa { font-size: .72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px;
+  background: rgba(249,115,22,.14); color: #FB923C; border: 1px solid rgba(249,115,22,.35); white-space: nowrap; }
+html.light-mode .badge-conta-fixa { color: #C2410C; }

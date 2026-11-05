@@ -309,7 +309,7 @@ $conn = Database::getConnection();
           if (e.key >= '0' && e.key <= '9') {
               e.preventDefault();
               if (temSelecao()) digits = '';
-              if (digits.length < 13) digits += e.key;
+              if (digits.length < 10) digits += e.key;
               render();
           } else if (e.key === 'Backspace') {
               e.preventDefault();

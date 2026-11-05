@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../../conn/config.php';
 require_once __DIR__ . '/../../conn/conn.php';
 require_once __DIR__ . '/../middleware/auth.php';
 require_once __DIR__ . '/../models/ConfigModel.php';
@@ -130,6 +131,14 @@ switch ($acao) {
             break;
         }
 
+        $dup = $conn->prepare("SELECT COUNT(*) FROM usuarios WHERE email = ?");
+        $dup->execute([$email]);
+        if ((int) $dup->fetchColumn() > 0) {
+            http_response_code(409);
+            echo json_encode(['erro' => 'Já existe um usuário com esse e-mail.']);
+            break;
+        }
+
         $hash = password_hash($senha, PASSWORD_BCRYPT, ['cost' => 12]);
         $stmt = $conn->prepare("INSERT INTO usuarios (nome, email, senha_hash) VALUES (?, ?, ?)");
         if ($stmt->execute([$nome, $email, $hash])) {
@@ -148,8 +157,36 @@ switch ($acao) {
             echo json_encode(['erro' => 'Não é possível remover sua própria conta.']);
             break;
         }
-        $stmt = $conn->prepare("DELETE FROM usuarios WHERE id = ?");
-        echo json_encode($stmt->execute([$id]));
+        // As FKs de gastos/cartões/rendas são RESTRICT: apagar só a linha de usuarios falha
+        // quando há dados. Remove tudo da conta (com backup de segurança antes).
+        $snapshot = BackupAutomatico::gerar('pre-remocao-usuario');
+        if (!$snapshot) {
+            http_response_code(500);
+            echo json_encode(['erro' => 'Não foi possível gerar o backup de segurança. Remoção cancelada.']);
+            break;
+        }
+        $filhos = [
+            'DELETE p FROM parcelas p JOIN gastos g ON g.id = p.gasto_id WHERE g.usuario_id = ?',
+            'DELETE a FROM cofrinho_aportes a JOIN cofrinhos c ON c.id = a.cofrinho_id WHERE c.usuario_id = ?',
+        ];
+        $comUsuario = ['gastos_recorrentes_lancamentos', 'faturas_pagas', 'contas_fixas_pagamentos', 'contas_pessoa', 'orcamentos',
+                       'lista_desejos', 'gastos', 'gastos_recorrentes', 'cofrinhos', 'cartoes_credito', 'categorias',
+                       'responsaveis', 'contas_fixas', 'renda_mensal'];
+        try {
+            $conn->exec("SET FOREIGN_KEY_CHECKS = 0");
+            $conn->beginTransaction();
+            foreach ($filhos as $q) $conn->prepare($q)->execute([$id]);
+            foreach ($comUsuario as $t) $conn->prepare("DELETE FROM `$t` WHERE usuario_id = ?")->execute([$id]);
+            $ok = $conn->prepare("DELETE FROM usuarios WHERE id = ?")->execute([$id]);
+            $conn->commit();
+            echo json_encode($ok);
+        } catch (Exception $e) {
+            if ($conn->inTransaction()) $conn->rollBack();
+            http_response_code(500);
+            echo json_encode(['erro' => 'Não foi possível remover o usuário.']);
+        } finally {
+            try { $conn->exec("SET FOREIGN_KEY_CHECKS = 1"); } catch (Exception $e) {}
+        }
         break;
 
     case 'trocar_senha':

@@ -23,3 +23,21 @@ define('CTRL_DESEJOS',       BASE_URL . '/php/controllers/ListaDesejosController
 
 // ── Caminho base para includes PHP (use em qualquer nível de pasta) ──────────
 // Exemplo: require_once BASE_PATH . '/php/templates/header.php';
+
+// ── Erros de banco nos controllers (JSON) ────────────────────────────────────
+// Valor/data fora do limite da coluna (SQLSTATE 22xxx) vira 400 amigável; o resto
+// vira 500 genérico. Nunca expõe SQL, caminhos ou stack trace ao navegador.
+set_exception_handler(function (Throwable $e) {
+    $json = false;
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'content-type: application/json') === 0) { $json = true; break; }
+    }
+    error_log('[Sky Finance] ' . get_class($e) . ': ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+    if (!headers_sent()) http_response_code(($e instanceof PDOException && strncmp((string) $e->getCode(), '22', 2) === 0) ? 400 : 500);
+    if ($json) {
+        echo json_encode(['erro' => ($e instanceof PDOException && strncmp((string) $e->getCode(), '22', 2) === 0)
+            ? 'Valor ou data fora do limite permitido.' : 'Erro interno. Tente novamente.']);
+    } else {
+        echo 'Erro interno. Tente novamente.';
+    }
+});

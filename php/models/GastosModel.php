@@ -51,7 +51,7 @@ class GastosModel {
         return $gastos;
     }
 
-    public static function adicionarGasto($desc, $valor, $categoria, $pagamento = null, $cartao = null, $data = null, $parcelado = null, $num_parcelas = null, $tipo, $recorrente = null, $responsavel = null, $parte = null) {
+    public static function adicionarGasto($desc, $valor, $categoria, $pagamento = null, $cartao = null, $data = null, $parcelado = null, $num_parcelas = null, $tipo = null, $recorrente = null, $responsavel = null, $parte = null) {
         $conn = Database::getConnection();
 
         if ($cartao === "") {
@@ -366,6 +366,29 @@ class GastosModel {
         $stmt->execute($params);
 
         $faturas = $stmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC);
+
+        // Contas fixas pagas no cartão aparecem na fatura em que caem. Só na
+        // fatura: nos totais do mês elas seguem em "Contas fixas" (sem duplicar).
+        $cf = $conn->prepare("
+            SELECT cf.cartao_id, cf.nome AS descricao, " . ContasFixasModel::sqlValorNoMes('cf', (int) $mes, $ano_atual) . " AS valor,
+                   NULL AS categoria, NULL AS categoria_id, NULL AS numero_parcela, NULL AS parcelas_total,
+                   NULL AS valor_parcela, NULL AS data_gasto, 'N' AS parcelado, cf.id, cc.nome_cartao,
+                   cf.responsavel_id, NULL AS responsavel_parte, 'CONTA_FIXA' AS tipo, cf.dia_vencimento
+            FROM contas_fixas cf
+            JOIN cartoes_credito cc ON cc.id = cf.cartao_id
+            LEFT JOIN contas_fixas_pagamentos cfp ON cfp.conta_fixa_id = cf.id AND cfp.mes = :mes AND cfp.ano = :ano
+            WHERE cf.usuario_id = @uid AND cf.cartao_id IS NOT NULL
+              AND (cfp.id IS NULL OR cfp.pulado = 'N')
+              AND " . ContasFixasModel::sqlValeNoMes('cf', (int) $mes, $ano_atual) .
+              ($cartaoId ? " AND cf.cartao_id = :cartao_id" : "")
+        );
+        $pcf = [':mes' => (int) $mes, ':ano' => $ano_atual];
+        if ($cartaoId) $pcf[':cartao_id'] = (int) $cartaoId;
+        $cf->execute($pcf);
+        foreach ($cf->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $k = $r['cartao_id']; unset($r['cartao_id']);
+            $faturas[$k][] = $r;
+        }
 
         foreach ($faturas as &$gastos) {
             $total = 0;

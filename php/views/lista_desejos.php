@@ -308,6 +308,21 @@ require_once __DIR__ . '/../templates/header.php';
   </div>
 </div>
 
+<!-- MODAL VER IMAGEM -->
+<div class="modal fade" id="modalZoomDesejo" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-truncate" id="zoomDesejoNome"></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body zoom-desejo-corpo">
+        <img id="zoomDesejoImg" src="" alt="">
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL SIMULAR FATURA -->
 <div class="modal fade" id="modalSimular" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -554,6 +569,7 @@ $(document).ready(function () {
       '<div class="vit-card desejo-card' + (sel ? ' selecionado' : '') + (comprado ? ' comprado' : '') + '" data-id="' + it.id + '">' +
         '<div class="vit-foto">' + imgHtml +
           '<span class="vit-prio vit-prio-' + it.prioridade + '">' + NOME_PRIO[it.prioridade] + '</span>' +
+          (img ? '<button type="button" class="desejo-zoom" data-img="' + escHtml(img) + '" data-nome="' + escHtml(it.nome) + '" title="Ver imagem" aria-label="Ver imagem de ' + escHtml(it.nome) + '"><i class="bi bi-zoom-in"></i></button>' : '') +
           '<button type="button" class="desejo-check" data-id="' + it.id + '" aria-pressed="' + sel + '" title="Selecionar"><i class="bi bi-check-lg"></i></button>' +
           (comprado ? '<div class="vit-selo-comprado"><i class="bi bi-bag-check-fill me-1"></i>Comprado</div>' : '') +
         '</div>' +
@@ -606,6 +622,14 @@ $(document).ready(function () {
   $('#vitBusca').on('input', function () { _busca = this.value; renderVitrine(); });
   $('#vitOrdem').on('change', function () { try { localStorage.setItem(ORDEM_KEY, this.value); } catch (e) {} renderVitrine(); });
   $('#vitComprados').on('change', renderVitrine);
+
+  // ─── VER IMAGEM AMPLIADA ─────────────────────────────────
+  $('#gridDesejos').on('click', '.desejo-zoom', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    $('#zoomDesejoImg').attr('src', $(this).data('img')).attr('alt', $(this).data('nome'));
+    $('#zoomDesejoNome').text($(this).data('nome'));
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalZoomDesejo')).show();
+  });
 
   // ─── SELEÇÃO MÚLTIPLA ────────────────────────────────────
   var _selecionados = new Set();
@@ -1642,6 +1666,16 @@ $(document).ready(function () {
 }
 
 /* Seleção múltipla */
+.desejo-zoom {
+  position: absolute; top: 6px; right: 40px;
+  width: 28px; height: 28px; border-radius: 8px; padding: 0;
+  border: 2px solid rgba(0,0,0,.25); background: rgba(255,255,255,.9); color: #1E293B;
+  display: none; align-items: center; justify-content: center; font-size: .9rem; cursor: pointer;
+}
+.desejo-zoom:hover { border-color: var(--cor-azul); color: var(--cor-azul); }
+@media (min-width: 992px) { .desejo-zoom { display: flex; } }   /* só no desktop */
+.zoom-desejo-corpo { background: #fff; display: flex; align-items: center; justify-content: center; padding: 1rem; border-radius: 0 0 16px 16px; }
+.zoom-desejo-corpo img { max-width: 100%; max-height: 75vh; object-fit: contain; }
 .desejo-check {
   position: absolute; top: 6px; right: 6px;
   width: 28px; height: 28px; border-radius: 8px;

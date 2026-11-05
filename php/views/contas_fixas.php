@@ -116,7 +116,7 @@ $(document).ready(function () {
 
         $.each(data, function (_, c) {
             var pago    = c.pago;
-            var vencido = !pago && ehMesAtual && hoje.getDate() > c.dia_vencimento;
+            var vencido = !pago && !c.no_credito && ehMesAtual && hoje.getDate() > c.dia_vencimento;
             var cor     = c.cor || '#3B82F6';
 
             var statusHtml, actionHtml;
@@ -124,6 +124,18 @@ $(document).ready(function () {
             if (c.pulado) {
                 statusHtml = '<span class="cfi-badge" style="background:#6B728022;color:var(--cor-texto-off);"><i class="bi bi-skip-forward-fill me-1"></i>Não paga este mês</span>';
                 actionHtml = '<button class="btn btn-sm btn-outline-secondary cfi-btn-desmarcar" data-id="' + c.id + '"><i class="bi bi-arrow-counterclockwise me-1"></i>Desfazer</button>';
+            } else if (c.no_credito) {
+                // No cartão: sem botão de pagar; acompanha a fatura
+                var cartao = escHtml(c.nome_cartao || 'cartão');
+                if (pago) {
+                    totalPago += c.valor_pago || c.valor;
+                    statusHtml = '<span class="cfi-badge pago"><i class="bi bi-credit-card-2-back-fill me-1"></i>Fatura paga</span>';
+                } else {
+                    totalAberto += c.valor;
+                    statusHtml = '<span class="cfi-badge aberto"><i class="bi bi-credit-card-2-back me-1"></i>Na fatura do ' + cartao + '</span>';
+                }
+                actionHtml = '<a class="btn btn-sm btn-outline-secondary" href="cartaocredito.php?mes=' + $('#mes').val() + '&ano=' + getAno() +
+                             '&cartao=' + c.cartao_id + '"><i class="bi bi-box-arrow-up-right me-1"></i>Ver fatura</a>';
             } else if (pago) {
                 totalPago += c.valor_pago || c.valor;
                 var dataPago = c.data_pagamento ? moment(c.data_pagamento).format('DD/MM') : '';
@@ -146,6 +158,7 @@ $(document).ready(function () {
                         '<div>' +
                             '<div class="cfi-nome">' + escHtml(c.nome) + '</div>' +
                             '<div class="cfi-detalhe"><i class="bi bi-calendar3 me-1"></i>Vence dia ' + c.dia_vencimento +
+                                (c.nome_cartao ? ' · <i class="bi bi-credit-card me-1"></i>' + escHtml(c.nome_cartao) + (parseInt(c.meses_desloc, 10) ? ' (cobrança do mês anterior)' : '') : '') +
                                 (c.responsavel_nome && !c.pulado
                                     ? ' · <i class="bi bi-person-fill me-1"></i>' + (pago ? 'dinheiro para ' : 'via ') + escHtml(c.responsavel_nome)
                                     : '') + '</div>' +

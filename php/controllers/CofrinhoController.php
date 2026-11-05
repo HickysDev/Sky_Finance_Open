@@ -52,6 +52,10 @@ switch ($acao) {
         echo json_encode(CofrinhoModel::retirar($cofrinhoId, $valor, $data, $obs));
         break;
 
+    case 'excluirAporte':
+        echo json_encode(CofrinhoModel::excluirAporte((int) ($_POST['id'] ?? 0)));
+        break;
+
     case 'buscarAportes':
         echo json_encode(CofrinhoModel::buscarAportes((int) ($_POST['id'] ?? 0)));
         break;

@@ -12,7 +12,7 @@ $conn = Database::getConnection();
         <h1 class="titulo mt-2 fs-titulo-pag">
             Finanças &nbsp;<i class="bi bi-bank titulo-azul"></i>
         </h1>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
             <i class="bi bi-arrow-left-square-fill botao botaoEsquerda" id="finLeft"></i>
             <select class="form-select text-center" id="mesFin" style="width:140px;">
                 <?php
@@ -481,6 +481,7 @@ $conn = Database::getConnection();
                                 <th style="padding:0.6rem 1rem;">Data</th>
                                 <th style="padding:0.6rem 1rem;">Valor</th>
                                 <th style="padding:0.6rem 1rem;">Observação</th>
+                                <th style="padding:0.6rem 1rem;"><span class="visually-hidden">Ações</span></th>
                             </tr>
                         </thead>
                         <tbody id="tbodyHist"></tbody>
@@ -1653,6 +1654,30 @@ $(document).ready(function () {
 
     // ─── HISTÓRICO ───────────────────────────────────────────────
 
+    // Apagar lançamento do histórico (ex.: depósito marcado antes de acontecer)
+    $(document).on('click', '.btnExcluirAporte', function () {
+        var $b = $(this);
+        Swal.fire({
+            title: 'Apagar lançamento?',
+            html: 'O ' + escHtml($b.data('desc')) + ' sai do histórico, do saldo do cofrinho e do "guardado" do mês.',
+            icon: 'warning', showCancelButton: true,
+            confirmButtonColor: '#EF4444', confirmButtonText: 'Apagar', cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r.isConfirmed) return;
+            $.ajax({
+                type: 'POST', url: App.ctrl.cofrinho, data: { acao: 'excluirAporte', id: $b.data('id') }, dataType: 'json',
+                success: function (res) {
+                    if (!res || !res.ok) { toastr.error((res && res.erro) || 'Não foi possível apagar.'); return; }
+                    toastr.success('Lançamento apagado.');
+                    buscaCofrinhos(); atualizaMeta();
+                    // Recarrega o histórico aberto
+                    $('<button class="btnHistCof">').data({ id: $b.data('cof'), nome: $b.data('nome') }).appendTo('body').trigger('click').remove();
+                },
+                error: function () { toastr.error('Erro ao apagar.'); }
+            });
+        });
+    });
+
     $(document).on('click', '.btnHistCof', function () {
         var $b = $(this);
         $('#histNomeCof').text($b.data('nome'));
@@ -1690,6 +1715,11 @@ $(document).ready(function () {
                         '<td style="padding:0.5rem 1rem;color:var(--cor-texto-off);">' +
                             (a.saldo_inicial === 'S' ? '<span class="badge-saldo-inicial">Saldo que já existia</span> ' : '') +
                             escHtml(a.observacao || (a.saldo_inicial === 'S' ? '' : '—')) + '</td>' +
+                        '<td style="padding:0.5rem 1rem;text-align:right;">' +
+                            '<button type="button" class="btn btn-sm btn-outline-danger btnExcluirAporte" title="Apagar este lançamento"' +
+                            ' data-id="' + a.id + '" data-cof="' + $b.data('id') + '" data-nome="' + escHtml($b.data('nome')) + '"' +
+                            ' data-desc="' + (isRet ? 'retirada' : 'depósito') + ' de R$ ' + fmtBR(Math.abs(val)) + ' em ' + dataFmt + '">' +
+                            '<i class="bi bi-trash3"></i></button></td>' +
                     '</tr>';
                 });
                 $('#tbodyHist').html(rows);

@@ -33,7 +33,10 @@ class ContasPessoaModel {
         $conn = Database::getConnection();
         $stmt = $conn->prepare("
             INSERT INTO contas_pessoa (usuario_id, responsavel_id, descricao, valor, data, categoria_id, metodo_pagamento)
-            VALUES (@uid, :rid, :desc, :valor, :data, :cat, :metodo)
+            SELECT @uid, r.id, :desc, :valor, :data,
+                   (SELECT c.id FROM categorias c WHERE c.id = :cat AND c.usuario_id = @uid),
+                   :metodo
+            FROM responsaveis r WHERE r.id = :rid AND r.usuario_id = @uid
         ");
         return $stmt->execute([
             ':rid'    => $responsavelId,
