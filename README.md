@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/jQuery-3.6-0769AD?style=for-the-badge&logo=jquery&logoColor=white" />
 </p>
 
-> As telas abaixo usam um usuário de demonstração com dados fictícios.
+> Esta é a versão pública do projeto, mantida como portfólio (sem novas atualizações). As telas abaixo usam um usuário de demonstração com dados fictícios.
 
 ---
 
@@ -136,6 +136,7 @@ Categorias, cartões, recorrentes, pessoas, contas fixas, conta do usuário e ba
 - Marcação de pagamento com valor pago e data; o mês pago usa o **valor pago**, então mudar o valor da conta não reescreve o passado
 - **"Não vou pagar este mês"**: zera a conta só naquele mês
 - **Paga por outra pessoa**: a conta pode ter um responsável padrão (ex.: "dou o dinheiro para a mãe pagar"); ela aparece em "Devo a ela" na tela Pessoas
+- **Frequência** (mensal, bimestral, trimestral…) e opção de lançar a conta **no cartão de crédito**
 - Contas valem a partir do mês de criação; inativar/arquivar preserva os meses anteriores
 
 ### Finanças
@@ -335,6 +336,11 @@ sudo chmod -R 755 /var/www/html/Sky_Finance/src/img/avatars/ /var/www/html/Sky_F
 - Todos os controllers exigem login; backup e gestão de usuários só para o administrador
 - Upload de imagens com validação do tipo real do arquivo (whitelist)
 - Busca de imagem por link com proteção contra acesso a endereços internos
+
+---
+
+## Sobre o desenvolvimento
+O Sky Finance foi construído com a ajuda do [Claude Code](https://claude.com/claude-code), a ferramenta de programação da Anthropic, **sempre com a minha revisão**: eu defino o que quero, o Claude propõe e implementa, e eu reviso cada mudança antes de ela entrar no projeto.
 
 ---
 
